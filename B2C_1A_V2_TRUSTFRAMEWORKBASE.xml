@@ -4,8 +4,8 @@
       xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06"
       PolicySchemaVersion="0.3.0.0"
       TenantId="{Settings:Tenant}"
-      PolicyId="B2C_1A_V3_TrustFrameworkBase"
-      PublicPolicyUri="http://{Settings:Tenant}/B2C_1A_V3_TrustFrameworkBase" 
+      PolicyId="B2C_1A_V2_TrustFrameworkBase"
+      PublicPolicyUri="http://{Settings:Tenant}/B2C_1A_V2_TrustFrameworkBase" 
       TenantObjectId="{Settings:TenantId}">
   <BuildingBlocks>
     <ClaimsSchema>
@@ -419,7 +419,7 @@
       <Domain>facebook.com</Domain>
       <DisplayName>Facebook</DisplayName>
       <TechnicalProfiles>
-        <TechnicalProfile Id="Facebook-OAUTH">
+        <TechnicalProfile Id="Facebook-OAUTH-Base">
           <!-- The text in the following DisplayName element is shown to the user on the claims provider                 selection screen. -->
           <DisplayName>Facebook</DisplayName>
           <Protocol Name="OAuth2" />
@@ -1003,7 +1003,7 @@
             </Precondition>
           </Preconditions>
           <ClaimsExchanges>
-            <ClaimsExchange Id="FacebookExchange" TechnicalProfileReferenceId="Facebook-OAUTH" />
+            <ClaimsExchange Id="FacebookExchange" TechnicalProfileReferenceId="Facebook-OAUTH-Base" />
             <ClaimsExchange Id="SignUpWithLogonEmailExchange" TechnicalProfileReferenceId="LocalAccountSignUpWithLogonEmail" />
           </ClaimsExchanges>
         </OrchestrationStep>
@@ -1095,7 +1095,7 @@
         </OrchestrationStep>
         <OrchestrationStep Order="2" Type="ClaimsExchange">
           <ClaimsExchanges>
-            <ClaimsExchange Id="FacebookExchange" TechnicalProfileReferenceId="Facebook-OAUTH" />
+            <ClaimsExchange Id="FacebookExchange" TechnicalProfileReferenceId="Facebook-OAUTH-Base" />
             <ClaimsExchange Id="LocalAccountSigninEmailExchange" TechnicalProfileReferenceId="SelfAsserted-LocalAccountSignin-Email" />
           </ClaimsExchanges>
         </OrchestrationStep>
