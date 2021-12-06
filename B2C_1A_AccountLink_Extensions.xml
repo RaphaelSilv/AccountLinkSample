@@ -152,6 +152,13 @@
         <AdminHelpText>socialEmailLinkAttempt</AdminHelpText>
         <UserHelpText>socialEmailLinkAttempt</UserHelpText>
       </ClaimType>
+        <!-- Claim type needed for LinkedIn claims transformations -->
+        <ClaimType Id="nullStringClaim">
+          <DisplayName>nullClaim</DisplayName>
+          <DataType>string</DataType>
+          <AdminHelpText>A policy claim to store output values from ClaimsTransformations that aren't useful. This claim should not be used in TechnicalProfiles.</AdminHelpText>
+          <UserHelpText>A policy claim to store output values from ClaimsTransformations that aren't useful. This claim should not be used in TechnicalProfiles.</UserHelpText>
+        </ClaimType>
     </ClaimsSchema>
     <ClaimsTransformations>
       <ClaimsTransformation Id="CopySignInNameToReadOnly" TransformationMethod="FormatStringClaim">
@@ -299,9 +306,56 @@
           <OutputClaim ClaimTypeReferenceId="issuers" TransformationClaimType="issuersCollection" />
         </OutputClaims>
       </ClaimsTransformation>
+       <!-- Claim transformations needed for LinkedIn technical profile -->
+       <ClaimsTransformation Id="ExtractGivenNameFromLinkedInResponse" TransformationMethod="GetSingleItemFromJson">
+        <InputClaims>
+          <InputClaim ClaimTypeReferenceId="givenName" TransformationClaimType="inputJson" />
+        </InputClaims>
+        <OutputClaims>
+          <OutputClaim ClaimTypeReferenceId="nullStringClaim" TransformationClaimType="key" />
+          <OutputClaim ClaimTypeReferenceId="givenName" TransformationClaimType="value" />
+        </OutputClaims>
+      </ClaimsTransformation>
+      <ClaimsTransformation Id="ExtractSurNameFromLinkedInResponse" TransformationMethod="GetSingleItemFromJson">
+        <InputClaims>
+          <InputClaim ClaimTypeReferenceId="surname" TransformationClaimType="inputJson" />
+        </InputClaims>
+        <OutputClaims>
+          <OutputClaim ClaimTypeReferenceId="nullStringClaim" TransformationClaimType="key" />
+          <OutputClaim ClaimTypeReferenceId="surname" TransformationClaimType="value" />
+        </OutputClaims>
+      </ClaimsTransformation>
     </ClaimsTransformations>
   </BuildingBlocks>
   <ClaimsProviders>
+    <ClaimsProvider>
+      <!-- Page that prompts for a new TOU on sign in if the users TOU is out of date-->
+        <DisplayName>Self Asserted</DisplayName>
+        <TechnicalProfiles>
+          <TechnicalProfile Id="SelfAsserted-Input-ToU-SignIn">
+            <DisplayName>Self Asserted ToU</DisplayName>
+            <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
+            <Metadata>
+              <Item Key="ContentDefinitionReferenceId">api.selfasserted</Item>
+              <Item Key="AllowGenerationOfClaimsWithNullValues">true</Item>
+            </Metadata>
+            <CryptographicKeys>
+              <Key Id="issuer_secret" StorageReferenceId="B2C_1A_TokenSigningKeyContainer" />
+            </CryptographicKeys>
+            <InputClaims>
+              <InputClaim ClaimTypeReferenceId="objectId" />
+              <InputClaim ClaimTypeReferenceId="extension_termsOfUseConsentChoice" DefaultValue="AgreeToTermsOfUseConsentNo" />
+            </InputClaims>
+            <OutputClaims>
+              <OutputClaim ClaimTypeReferenceId="extension_termsOfUseConsentChoice" Required="true" />
+            </OutputClaims>
+            <ValidationTechnicalProfiles>
+              <ValidationTechnicalProfile ReferenceId="Update-TOU-Status" />
+            </ValidationTechnicalProfiles>
+            <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+          </TechnicalProfile>
+        </TechnicalProfiles>
+    </ClaimsProvider>
     <ClaimsProvider>
       <DisplayName>REST APIs</DisplayName>
       <TechnicalProfiles>
@@ -347,11 +401,19 @@
             <OutputClaim ClaimTypeReferenceId="currentUserIdentities" PartnerClaimType="userIdentities"/>
             <OutputClaim ClaimTypeReferenceId="extension_haspassword" DefaultValue="false"/>
             <OutputClaim ClaimTypeReferenceId="localAccountUpn" PartnerClaimType="userPrincipalName"/>
+            <OutputClaim ClaimTypeReferenceId="userPrincipalName" />
+            <OutputClaim ClaimTypeReferenceId="displayName" />
+            <OutputClaim ClaimTypeReferenceId="otherMails" />
+            <OutputClaim ClaimTypeReferenceId="givenName" />
+            <OutputClaim ClaimTypeReferenceId="surname" />
+            <OutputClaim ClaimTypeReferenceId="extension_termsOfUseConsentDateTime" DefaultValue="2017-10-01T15:00:00.0000000Z" />
           </OutputClaims>
           <OutputClaimsTransformations>
-            <OutputClaimsTransformation ReferenceId="ExtractCurrentIssuers" />
             <OutputClaimsTransformation ReferenceId="UserIdentitiesContainsCurrentIssuer" />
             <OutputClaimsTransformation ReferenceId="AppendNewUserIdentityToCurrentUserIdentities" />
+            <OutputClaimsTransformation ReferenceId="ExtractCurrentIssuers" />
+            <OutputClaimsTransformation ReferenceId="GetCurrentDateTime" />
+            <OutputClaimsTransformation ReferenceId="IsTermsOfUseConsentRequiredForDateTime" />
           </OutputClaimsTransformations>
           <IncludeTechnicalProfile ReferenceId="AAD-Common" />
           <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
@@ -402,6 +464,9 @@
           <OutputClaimsTransformations>
             <OutputClaimsTransformation ReferenceId="AssertEmailAndLinkedEmailAreEqual" />
           </OutputClaimsTransformations>
+          <ValidationTechnicalProfiles>
+            <ValidationTechnicalProfile ReferenceId="login-NonInteractive" />
+          </ValidationTechnicalProfiles>
           <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD" />
         </TechnicalProfile>
       </TechnicalProfiles>
@@ -409,6 +474,73 @@
     <ClaimsProvider>
       <DisplayName>Local Account</DisplayName>
       <TechnicalProfiles>
+        <TechnicalProfile Id="SelfAsserted-LocalAccountSignin-Email">
+          <DisplayName>Local Account Signin</DisplayName>
+          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
+          <Metadata>
+            <Item Key="SignUpTarget">SignUpWithLogonEmailExchange</Item>
+            <Item Key="setting.operatingMode">Email</Item>
+            <Item Key="ContentDefinitionReferenceId">api.selfasserted</Item>
+          </Metadata>
+          <IncludeInSso>false</IncludeInSso>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="signInName" />
+            <InputClaim ClaimTypeReferenceId="currentTime" />
+          </InputClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="signInName" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="password" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="objectId" />
+            <OutputClaim ClaimTypeReferenceId="authenticationSource" />
+            <OutputClaim ClaimTypeReferenceId="termsOfUseConsentRequired"/>
+            <OutputClaim ClaimTypeReferenceId="extension_termsOfUseConsentDateTime" />
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="GetCurrentDateTime" />
+          </OutputClaimsTransformations>
+          <ValidationTechnicalProfiles>
+            <ValidationTechnicalProfile ReferenceId="login-NonInteractive" />
+            <ValidationTechnicalProfile ReferenceId="Check-TOU-Status" />
+          </ValidationTechnicalProfiles>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD" />
+        </TechnicalProfile>
+
+        <!-- read the last time the user consented -->
+        <TechnicalProfile Id="Check-TOU-Status">
+          <Metadata>
+            <Item Key="Operation">Read</Item>
+            <Item Key="RaiseErrorIfClaimsPrincipalDoesNotExist">true</Item>
+          </Metadata>
+          <IncludeInSso>false</IncludeInSso>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="objectId" Required="true" />
+          </InputClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="extension_termsOfUseConsentDateTime" DefaultValue="2017-10-01T15:00:00.0000000Z" />
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="IsTermsOfUseConsentRequiredForDateTime" />
+          </OutputClaimsTransformations>
+          <IncludeTechnicalProfile ReferenceId="AAD-Common" />
+        </TechnicalProfile>
+
+        <!-- write the current time to the consent attribute if the user reconsents to TOU on sign in -->
+        <TechnicalProfile Id="Update-TOU-Status">
+          <Metadata>
+            <Item Key="Operation">Write</Item>
+            <Item Key="RaiseErrorIfClaimsPrincipalDoesNotExist">true</Item>
+          </Metadata>
+          <IncludeInSso>false</IncludeInSso>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="objectId" Required="true" />
+          </InputClaims>
+          <PersistedClaims>
+            <PersistedClaim ClaimTypeReferenceId="objectId" />
+            <PersistedClaim ClaimTypeReferenceId="currentTime" PartnerClaimType="extension_termsOfUseConsentDateTime" />
+          </PersistedClaims>
+          <IncludeTechnicalProfile ReferenceId="AAD-Common" />
+        </TechnicalProfile>
+
         <TechnicalProfile Id="LocalAccountSignUpWithLogonEmail-HasEmailFlagged">
           <DisplayName>Email signup</DisplayName>
           <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
@@ -421,6 +553,9 @@
           <CryptographicKeys>
             <Key Id="issuer_secret" StorageReferenceId="B2C_1A_TokenSigningKeyContainer" />
           </CryptographicKeys>
+          <InputClaimsTransformations>
+            <InputClaimsTransformation ReferenceId="GetCurrentDateTime" />
+          </InputClaimsTransformations>
           <InputClaims>
             <InputClaim ClaimTypeReferenceId="email" />
           </InputClaims>
@@ -443,6 +578,20 @@
           </ValidationTechnicalProfiles>
           <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD" />
         </TechnicalProfile>
+
+         <!-- During sign up, write the current time of consent, and version -->
+         <TechnicalProfile Id="AAD-UserWriteUsingLogonEmail">
+          <PersistedClaims>
+            <PersistedClaim ClaimTypeReferenceId="currentTime" PartnerClaimType="extension_termsOfUseConsentDateTime"/>
+            <PersistedClaim ClaimTypeReferenceId="extension_termsOfUseConsentChoice" />
+            <PersistedClaim ClaimTypeReferenceId="extension_termsOfUseConsentVersion" DefaultValue="V1" />
+
+            <PersistedClaim ClaimTypeReferenceId="displayName" />
+            <PersistedClaim ClaimTypeReferenceId="givenName" />
+            <PersistedClaim ClaimTypeReferenceId="surname" />
+          </PersistedClaims>
+        </TechnicalProfile>
+
         <TechnicalProfile Id="CheckProofOfSocialObjectIdMatchesLocal">
           <DisplayName>Compare Email And Verify Email</DisplayName>
           <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.ClaimsTransformationProtocolProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
@@ -471,7 +620,6 @@
       </TechnicalProfiles>
     </ClaimsProvider>
 
-
     <ClaimsProvider>
       <DisplayName>Azure Active Directory</DisplayName>
       <TechnicalProfiles>
@@ -486,9 +634,21 @@
           </InputClaims>
           <OutputClaims>
             <OutputClaim ClaimTypeReferenceId="objectIdToLink" PartnerClaimType="objectId" />
+              <!-- Optional claims -->
+              <OutputClaim ClaimTypeReferenceId="userPrincipalName" />
+              <OutputClaim ClaimTypeReferenceId="displayName" />
+              <OutputClaim ClaimTypeReferenceId="otherMails" />
+              <OutputClaim ClaimTypeReferenceId="givenName" />
+              <OutputClaim ClaimTypeReferenceId="surname" />
+              <OutputClaim ClaimTypeReferenceId="extension_termsOfUseConsentDateTime" DefaultValue="2017-10-01T15:00:00.0000000Z" />
           </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="GetCurrentDateTime" />
+            <OutputClaimsTransformation ReferenceId="IsTermsOfUseConsentRequiredForDateTime" />
+          </OutputClaimsTransformations>
           <IncludeTechnicalProfile ReferenceId="AAD-Common" />
         </TechnicalProfile>
+        
         <TechnicalProfile Id="AAD-UserReadUsingUserIdentity">
           <Metadata>
             <Item Key="api-version">1.6</Item>
@@ -529,6 +689,7 @@
           </Metadata>
           <InputClaimsTransformations>
             <InputClaimsTransformation ReferenceId="CreateOtherMailsFromEmail"/>
+            <InputClaimsTransformation ReferenceId="GetCurrentDateTime" />
           </InputClaimsTransformations>
           <InputClaims>
             <InputClaim ClaimTypeReferenceId="userIdentities" PartnerClaimType="userIdentities" Required="true"/>
@@ -547,6 +708,11 @@
             <PersistedClaim ClaimTypeReferenceId="givenName"/>
             <PersistedClaim ClaimTypeReferenceId="surname"/>
             <PersistedClaim ClaimTypeReferenceId="socialEmail" PartnerClaimType="signInNames.emailAddress"/>
+            <PersistedClaim ClaimTypeReferenceId="email" PartnerClaimType="signInNames.emailAddress"/>
+
+            <PersistedClaim ClaimTypeReferenceId="currentTime" PartnerClaimType="extension_termsOfUseConsentDateTime"/>
+            <PersistedClaim ClaimTypeReferenceId="extension_termsOfUseConsentChoice" />
+            <PersistedClaim ClaimTypeReferenceId="extension_termsOfUseConsentVersion" DefaultValue="V1" />
           </PersistedClaims>
           <OutputClaims>
             <OutputClaim ClaimTypeReferenceId="objectId"/>
@@ -558,7 +724,8 @@
           </OutputClaims>
           <IncludeTechnicalProfile ReferenceId="AAD-Common"/>
           <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD"/>
-        </TechnicalProfile>        <!--Sample: Update the userIdentities to add or remove user identity -->
+        </TechnicalProfile>        
+        <!--Sample: Update the userIdentities to add or remove user identity -->
         <TechnicalProfile Id="AAD-UserUpdateWithUserIdentities">
           <Metadata>
             <Item Key="api-version">1.6</Item>
@@ -651,17 +818,30 @@
             <!-- Optional claims. These claims are collected from the user and can be modified. If a claim is to be persisted in the directory after having been 
                  collected from the user, it needs to be added as a PersistedClaim in the ValidationTechnicalProfile referenced below, i.e. 
                  in AAD-UserWriteUsingAlternativeSecurityId. -->
-            <OutputClaim ClaimTypeReferenceId="displayName"/>
-            <OutputClaim ClaimTypeReferenceId="givenName"/>
-            <OutputClaim ClaimTypeReferenceId="surname"/>
+            <OutputClaim ClaimTypeReferenceId="displayName" />
+            <OutputClaim ClaimTypeReferenceId="givenName" />
+            <OutputClaim ClaimTypeReferenceId="surname" />
           </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="GetCurrentDateTime" />
+          </OutputClaimsTransformations>
           <ValidationTechnicalProfiles>
             <ValidationTechnicalProfile ReferenceId="AAD-UserWriteUsingUserIdentity"/>
+            <ValidationTechnicalProfile ReferenceId="Check-TOU-Status" />
           </ValidationTechnicalProfiles>
-          <UseTechnicalProfileForSessionManagement ReferenceId="SM-SocialSignup"/>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-SocialSignupCustom"/>
         </TechnicalProfile>
+        
+        <TechnicalProfile Id="SM-SocialSignupCustom">
+          <PersistedClaims>
+            <PersistedClaim ClaimTypeReferenceId="termsOfUseConsentRequired" />
+          </PersistedClaims>
+          <IncludeTechnicalProfile ReferenceId="SM-SocialSignup" />
+        </TechnicalProfile> 
+
       </TechnicalProfiles>
     </ClaimsProvider>    
+    
     <!-- Facebook claims provider -->
     <ClaimsProvider>
       <DisplayName>Facebook</DisplayName>
@@ -905,7 +1085,7 @@
           <UseTechnicalProfileForSessionManagement ReferenceId="SM-SocialLogin" />
         </TechnicalProfile>
         <TechnicalProfile Id="Google-OAuth2-Link">
-          <DisplayName>Link LinkedIn</DisplayName>
+          <DisplayName>Link Google</DisplayName>
           <Metadata>
             <Item Key="ClaimTypeOnWhichToEnable">currentIssuers</Item>
             <Item Key="ClaimValueOnWhichToEnable">google.com</Item>
@@ -1084,7 +1264,63 @@
             <ClaimsExchange Id="AADUserWrite" TechnicalProfileReferenceId="AAD-UserWriteUsingUserIdentity" />
           </ClaimsExchanges>
         </OrchestrationStep>
-        <OrchestrationStep Order="4" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="JwtIssuer" />
+         <!-- This step reads any user attributes that we may not have received when authenticating using ESTS so they can be sent
+          in the token. -->
+        <OrchestrationStep Order="4" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
+              <Value>authenticationSource</Value>
+              <Value>socialIdpAuthentication</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange Id="AADUserReadWithObjectId" TechnicalProfileReferenceId="AAD-UserReadUsingObjectId" />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+         <!-- Display Terms of Use consent page for any SignIn scenario based on termsOfUseConsentRequired claim -->
+         <OrchestrationStep Order="5" Type="ClaimsExchange">
+          <Preconditions>
+            <!-- Add condition to not execute this step for sign up scenario based on newUser claim -->
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>newUser</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+              <Value>termsOfUseConsentRequired</Value>
+              <Value>True</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange Id="ShowToUConsentPageForNewUser" TechnicalProfileReferenceId="SelfAsserted-Input-ToU-SignIn" />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="6" Type="ClaimsExchange">
+          <Preconditions>
+            <!-- Add condition to not execute this step for sign up scenario based on newUser claim -->
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>newUser</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange Id="RESTAuthB2CSignIn" TechnicalProfileReferenceId="REST-AuthB2CSignIn" />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="7" Type="ClaimsExchange">
+          <Preconditions>
+            <!-- Add condition to execute this step for sign up -->
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+              <Value>newUser</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange Id="RESTAuthB2CSignUp" TechnicalProfileReferenceId="REST-AuthB2CSignUp" />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="8" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="JwtIssuer" />
       </OrchestrationSteps>
     </SubJourney>
     <SubJourney Id="HandleLinkLocalToSocial" Type="Transfer">
